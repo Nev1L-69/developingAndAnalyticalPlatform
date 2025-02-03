@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytical Platform</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+<body>
+  <h1>Time-Series Data Visualization</h1>
+  <form id="filterForm">
+    <label>Select Fields:</label><br>
+    <label><input type="checkbox" name="fields" value="field1"> Field 1</label>
+    <label><input type="checkbox" name="fields" value="field2"> Field 2</label>
+    <label><input type="checkbox" name="fields" value="field3"> Field 3</label><br><br>
+    <label for="start_date">Start Date:</label>
+    <input type="date" id="start_date" name="start_date" required>
+    <label for="end_date">End Date:</label>
+    <input type="date" id="end_date" name="end_date" required>
+    <button type="submit">Fetch Data</button>
+  </form>
+
+  <h2>Time-Series Data</h2>
+  <table id="dataTable">
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <!-- Columns for selected fields will be added here -->
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Data will be inserted here -->
+    </tbody>
+  </table>
+
+  <h2>Metrics</h2>
+  <div id="metrics">
+    <!-- Metrics will be inserted here -->
+  </div>
+
+  <h2>Chart</h2>
+  <canvas id="myChart" width="400" height="200"></canvas>
+
+  <script>
+    const ctx = document.getElementById('myChart').getContext('2d');
+    let myChart;
+
+    document.getElementById('filterForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fields = Array.from(document.querySelectorAll('input[name="fields"]:checked')).map((cb) => cb.value);
+  const start_date = document.getElementById('start_date').value;
+  const end_date = document.getElementById('end_date').value;
+
+  console.log('Selected Fields:', fields);
+  console.log('Start Date:', start_date);
+  console.log('End Date:', end_date);
+
+  // Fetch time-series data
+  const response = await fetch(
+    `/api/measurements?fields=${fields.join(',')}&start_date=${start_date}&end_date=${end_date}`,
+  );
+  const data = await response.json();
+  console.log('Fetched Data:', data);
+
+  // Display data in the table
+  const tableBody = document.querySelector('#dataTable tbody');
+  const tableHead = document.querySelector('#dataTable thead tr');
+  tableBody.innerHTML = ''; // Clear previous data
+  tableHead.innerHTML = '<th>Timestamp</th>'; // Reset table header
+
+  // Add columns for selected fields
+  fields.forEach((field) => {
+    tableHead.innerHTML += `<th>${field}</th>`;
+  });
+
+  // Add rows for data
+  data.forEach((item) => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${new Date(item.timestamp).toLocaleString()}</td>`;
+    fields.forEach((field) => {
+      row.innerHTML += `<td>${item[field]}</td>`;
+    });
+    tableBody.appendChild(row);
+  });
+
+  // Fetch metrics for each field
+  const metrics = {};
+  for (const field of fields) {
+    const metricsResponse = await fetch(
+      `/api/measurements/metrics?field=${field}&start_date=${start_date}&end_date=${end_date}`,
+    );
+    const fieldMetrics = await metricsResponse.json();
+
+    if (fieldMetrics.error) {
+      metrics[field] = { error: fieldMetrics.error };
+    } else {
+      metrics[field] = fieldMetrics;
+    }
+  }
+
+  // Display metrics
+  let metricsHTML = '';
+  for (const field of fields) {
+    metricsHTML += `<h3>${field}</h3>`;
+    if (metrics[field].error) {
+      metricsHTML += `<p>${metrics[field].error}</p>`;
+    } else {
+      metricsHTML += `
+        <p>Average: ${metrics[field].avg.toFixed(2)}</p>
+        <p>Min: ${metrics[field].min}</p>
+        <p>Max: ${metrics[field].max}</p>
+        <p>Standard Deviation: ${metrics[field].stdDev.toFixed(2)}</p>
+      `;
+    }
+  }
+  document.getElementById('metrics').innerHTML = metricsHTML;
+
+  // Render chart
+  if (myChart) myChart.destroy(); // Destroy the existing chart
+  myChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.map((item) => new Date(item.timestamp).toLocaleString()),
+      datasets: fields.map((field, index) => ({
+        label: field,
+        data: data.map((item) => item[field]),
+        borderColor: `hsl(${index * 120}, 70%, 50%)`, // Different colors for each field
+        fill: false,
+      })),
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          display: true,
+          title: {
+            display: true,
+            text: 'Timestamp',
+          },
+        },
+        y: {
+          display: true,
+          title: {
+            display: true,
+            text: 'Value',
+          },
+        },
+      },
+    },
+  });
+});
+  </script>
+</body>
+</html>
